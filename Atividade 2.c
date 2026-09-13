@@ -6,28 +6,48 @@
 #define H 1080
 #define CELL 40
 
-typedef enum { BRONZE, PRATA, OURO, DIAMANTE } Tipo;
+typedef enum{BRONZE,PRATA,OURO,DIAMANTE}Tipo;
+typedef enum{ARMA,POCAO,ESCUDO}TipoItem;
 
-typedef struct {
-    Vector2 pos, vel;
+typedef struct{float dano;int alcance;}DadosArma;
+typedef struct{int cura;}DadosPocao;
+typedef struct{int absorcao;}DadosEscudo;
+typedef union{DadosArma arma;DadosPocao pocao;DadosEscudo escudo;}DadosItem;
+
+typedef struct{
+    Vector2 pos;
     float raio;
-    Color cor;
-} Bola;
+    TipoItem tipo;
+    DadosItem dados;
+    bool coletado;
+    float tempoColeta;
+}Item;
 
-typedef struct {
+typedef struct{
+    Vector2 pos;
+    float raio;
+    int vida,dano,armadura;
+}Jogador;
+
+typedef struct{Vector2 pos,vel;float raio;Color cor;}Bola;
+
+typedef struct{
     Vector2 pos;
     float raio;
     Tipo tipo;
     int valor;
     bool coletada;
     float tempoColeta;
-} Moeda;
+}Moeda;
 
 int valor(Tipo t){return t==BRONZE?5:t==PRATA?10:t==OURO?25:50;}
+
 Color cor(Tipo t){
-    return t==BRONZE?(Color){160,90,40,255}:
-           t==PRATA?(Color){190,190,190,255}:
-           t==OURO?GOLD:(Color){0,220,255,255};
+    return t==BRONZE?(Color){160,90,40,255}:t==PRATA?(Color){190,190,190,255}:t==OURO?GOLD:(Color){0,220,255,255};
+}
+
+Color corItem(Item *i){
+    return i->tipo==ARMA?RED:i->tipo==ESCUDO?BLUE:i->dados.pocao.cura<0?PURPLE:GREEN;
 }
 
 void novaBola(Bola *b){
@@ -42,15 +62,26 @@ void novaBola(Bola *b){
 void novaMoeda(Moeda *m){
     m->raio=10;
     m->pos=(Vector2){GetRandomValue(10,W-10),GetRandomValue(10,H-10)};
-    if(GetRandomValue(0,9)==0)
-        m->tipo=DIAMANTE;
-    else
-        m->tipo=GetRandomValue(BRONZE,OURO);
+    m->tipo=GetRandomValue(0,9)==0?DIAMANTE:GetRandomValue(BRONZE,OURO);
     m->valor=valor(m->tipo);
-    m->coletada=false;
-    m->tempoColeta=0;
+    m->coletada=false;m->tempoColeta=0;
 }
-/*durante essa parte aqui da moeda, demorei pra entender porque ele mostrava prata mesmo sem a adição enquanto eu fazia uns testes, até perceber q prata é = 1 e por isso sorteava mesmo assim, enquanto eu queria testar os outros valores kkkkkk*/
+
+void novoItem(Item *i){
+    i->raio=14;
+    i->pos=(Vector2){GetRandomValue(30,W-30),GetRandomValue(30,H-30)};
+    i->tipo=GetRandomValue(ARMA,ESCUDO);
+    i->coletado=false;i->tempoColeta=0;
+
+    if(i->tipo==ARMA){
+        i->dados.arma.dano=GetRandomValue(2,8);
+        i->dados.arma.alcance=GetRandomValue(1,3);
+    }else if(i->tipo==POCAO){
+        i->dados.pocao.cura=GetRandomValue(10,30);
+        if(GetRandomValue(0,9)<3)i->dados.pocao.cura=-GetRandomValue(5,20);
+    }else i->dados.escudo.absorcao=GetRandomValue(2,8);
+}
+
 Bola *criarBolas(int n){
     Bola *v=n>0?malloc(n*sizeof(Bola)):NULL;
     if(!v)return NULL;
@@ -65,6 +96,13 @@ Moeda *criarMoedas(int n){
     return v;
 }
 
+Item *criarItens(int n){
+    Item *v=n>0?malloc(n*sizeof(Item)):NULL;
+    if(!v)return NULL;
+    for(int i=0;i<n;i++)novoItem(v+i);
+    return v;
+}
+
 int **criarGrade(int l,int c){
     int **m=malloc(l*sizeof(int*));
     if(!m)return NULL;
@@ -72,8 +110,7 @@ int **criarGrade(int l,int c){
         m[i]=calloc(c,sizeof(int));
         if(!m[i]){
             while(i--)free(m[i]);
-            free(m);
-            return NULL;
+            free(m);return NULL;
         }
     }
     return m;
@@ -84,42 +121,69 @@ void liberarGrade(int **m,int l){
 }
 
 void atualizar(Bola *b){
-    b->pos.x+=b->vel.x;
-    b->pos.y+=b->vel.y;
+    b->pos.x+=b->vel.x;b->pos.y+=b->vel.y;
 
     if(b->pos.x<=b->raio||b->pos.x>=W-b->raio){
         b->pos.x=b->pos.x<=b->raio?b->raio:W-b->raio;
         b->vel.x*=-1;
     }
+
     if(b->pos.y<=b->raio||b->pos.y>=H-b->raio){
         b->pos.y=b->pos.y<=b->raio?b->raio:H-b->raio;
         b->vel.y*=-1;
     }
 }
 
-bool coletar(Moeda *m,Bola *b){
-    if(m->coletada)return false;
-    float x=m->pos.x-b->pos.x,y=m->pos.y-b->pos.y,r=m->raio+b->raio;
-    if(x*x+y*y<=r*r){
-        m->coletada=true;
-        m->tempoColeta=GetTime();
-        return true;
+void mover(Jogador *j){
+    if(IsKeyDown(KEY_W))j->pos.y-=5;
+    if(IsKeyDown(KEY_S))j->pos.y+=5;
+    if(IsKeyDown(KEY_A))j->pos.x-=5;
+    if(IsKeyDown(KEY_D))j->pos.x+=5;
+
+    if(j->pos.x<j->raio)j->pos.x=j->raio;
+    if(j->pos.x>W-j->raio)j->pos.x=W-j->raio;
+    if(j->pos.y<j->raio)j->pos.y=j->raio;
+    if(j->pos.y>H-j->raio)j->pos.y=H-j->raio;
+}
+
+bool perto(Vector2 a,Vector2 b,float r){
+    float x=a.x-b.x,y=a.y-b.y;
+    return x*x+y*y<=r*r;
+}
+
+bool coletarMoeda(Moeda *m,Jogador *j){
+    if(!m->coletada&&perto(m->pos,j->pos,m->raio+j->raio)){
+        m->coletada=true;m->tempoColeta=GetTime();return true;
     }
     return false;
 }
 
+bool coletarItem(Item *i,Jogador *j){
+    if(i->coletado||!perto(i->pos,j->pos,i->raio+j->raio))return false;
+
+    switch(i->tipo){
+        case ARMA:j->dano+=(int)i->dados.arma.dano;break;
+        case POCAO:j->vida+=i->dados.pocao.cura;if(j->vida<0)j->vida=0;break;
+        case ESCUDO:j->armadura+=i->dados.escudo.absorcao;break;
+    }
+
+    i->coletado=true;i->tempoColeta=GetTime();
+    return true;
+}
+
 void adicionarBola(Bola **v,int *n){
     Bola *p=realloc(*v,(*n+1)*sizeof(Bola));
-    if(!p)return;
-    *v=p;
-    novaBola(*v+(*n)++);
+    if(p){*v=p;novaBola(p+(*n));(*n)++;}
 }
 
 void adicionarMoeda(Moeda **v,int *n){
     Moeda *p=realloc(*v,(*n+1)*sizeof(Moeda));
-    if(!p)return;
-    *v=p;
-    novaMoeda(*v+(*n)++);
+    if(p){*v=p;novaMoeda(p+(*n));(*n)++;}
+}
+
+void adicionarItem(Item **v,int *n){
+    Item *p=realloc(*v,(*n+1)*sizeof(Item));
+    if(p){*v=p;novoItem(p+(*n));(*n)++;}
 }
 
 void desenharGrade(int **g,int l,int c){
@@ -131,22 +195,35 @@ void desenharGrade(int **g,int l,int c){
         }
 }
 
+void desenharItem(Item *i){
+    if(i->coletado)return;
+    DrawCircleV(i->pos,i->raio,corItem(i));
+    DrawText(i->tipo==ARMA?"A":i->tipo==POCAO?"P":"E",i->pos.x-6,i->pos.y-9,18,WHITE);
+}
+
 int main(void){
-    InitWindow(W,H,"Ponteiros e Memoria");
+    InitWindow(W,H,"Atividade 3");
     SetTargetFPS(60);
 
-    int l=H/CELL,c=W/CELL,nb=12,nm=8,pontos=0,coletadas=0;
+    int l=H/CELL,c=W/CELL,nb=12,nm=8,ni=10,pontos=0,cm=0,ci=0;
     int **grade=criarGrade(l,c);
     Bola *bolas=criarBolas(nb);
     Moeda *moedas=criarMoedas(nm);
+    Item *itens=criarItens(ni);
 
-    if(!grade||!bolas||!moedas){
-        liberarGrade(grade,l);free(bolas);free(moedas);CloseWindow();return 1;
+    Jogador j={{W/2.0f,H/2.0f},18,100,10,0};
+
+    if(!grade||!bolas||!moedas||!itens){
+        liberarGrade(grade,l);free(bolas);free(moedas);free(itens);
+        CloseWindow();return 1;
     }
 
     while(!WindowShouldClose()){
+        mover(&j);
+
         if(IsKeyPressed(KEY_SPACE))adicionarBola(&bolas,&nb);
         if(IsKeyPressed(KEY_M))adicionarMoeda(&moedas,&nm);
+        if(IsKeyPressed(KEY_I))adicionarItem(&itens,&ni);
 
         if(IsKeyPressed(KEY_BACKSPACE)&&nb>1){
             Bola *p=realloc(bolas,(nb-1)*sizeof(Bola));
@@ -158,27 +235,31 @@ int main(void){
             if(p)moedas=p,nm--;
         }
 
-        for(int i=0;i<nm;i++){
-            Moeda *m=moedas+i;
-            if(m->coletada&&GetTime()-m->tempoColeta>=3)novaMoeda(m);
-        }
+        for(int i=0;i<nm;i++)
+            if(moedas[i].coletada&&GetTime()-moedas[i].tempoColeta>=3)
+                novaMoeda(moedas+i);
+
+        for(int i=0;i<ni;i++)
+            if(itens[i].coletado&&GetTime()-itens[i].tempoColeta>=3)
+                novoItem(itens+i);
 
         for(int i=0;i<nb;i++){
-            Bola *b=bolas+i;
-            atualizar(b);
-
-            int x=b->pos.x/CELL,y=b->pos.y/CELL;
+            atualizar(bolas+i);
+            int x=bolas[i].pos.x/CELL,y=bolas[i].pos.y/CELL;
             if(x>=0&&x<c&&y>=0&&y<l)grade[y][x]=1;
-
-            for(int j=0;j<nm;j++)
-                if(coletar(moedas+j,b))
-                    pontos+=(moedas+j)->valor,coletadas++;
         }
+
+        for(int i=0;i<nm;i++)
+            if(coletarMoeda(moedas+i,&j))
+                pontos+=moedas[i].valor,cm++;
+
+        for(int i=0;i<ni;i++)
+            if(coletarItem(itens+i,&j))ci++;
 
         int visitadas=0;
         for(int i=0;i<l;i++)
-            for(int j=0;j<c;j++)
-                visitadas+=grade[i][j];
+            for(int k=0;k<c;k++)
+                visitadas+=grade[i][k];
 
         BeginDrawing();
         ClearBackground(BLACK);
@@ -188,21 +269,25 @@ int main(void){
             if(!moedas[i].coletada)
                 DrawCircleV(moedas[i].pos,moedas[i].raio,cor(moedas[i].tipo));
 
-        for(int i=0;i<nb;i++)
-            DrawCircleV(bolas[i].pos,bolas[i].raio,bolas[i].cor);
+        for(int i=0;i<ni;i++)desenharItem(itens+i);
+        for(int i=0;i<nb;i++)DrawCircleV(bolas[i].pos,bolas[i].raio,bolas[i].cor);
 
-        DrawRectangle(10,10,400,145,(Color){0,0,0,210});
-        DrawText(TextFormat("Bolas: %d",nb),20,20,20,WHITE);
-        DrawText(TextFormat("Celulas visitadas: %d",visitadas),20,45,20,WHITE);
-        DrawText(TextFormat("Moedas: %d | Coletadas: %d",nm,coletadas),20,70,20,WHITE);
-        DrawText(TextFormat("Pontuacao: %d",pontos),20,95,20,YELLOW);
-        DrawText("ESPACO +bola | BACKSPACE -bola",20,120,15,LIGHTGRAY);
-        DrawText("M +moeda | N -moeda",20,140,15,LIGHTGRAY);
+        DrawCircleV(j.pos,j.raio,ORANGE);
+        DrawText("J",j.pos.x-6,j.pos.y-10,20,WHITE);
+
+        DrawRectangle(10,10,430,220,(Color){0,0,0,210});
+        DrawText(TextFormat("Vida: %d | Dano: %d | Armadura: %d",j.vida,j.dano,j.armadura),20,20,20,WHITE);
+        DrawText(TextFormat("Bolas: %d | Celulas: %d",nb,visitadas),20,50,20,WHITE);
+        DrawText(TextFormat("Moedas: %d | Coletadas: %d",nm,cm),20,80,20,WHITE);
+        DrawText(TextFormat("Pontos: %d | Itens: %d",pontos,ci),20,110,20,YELLOW);
+        DrawText("WASD mover | ESPACO +bola | BACKSPACE -bola",20,145,15,LIGHTGRAY);
+        DrawText("M +moeda | N -moeda | I +item",20,170,15,LIGHTGRAY);
+        DrawText("A arma | P pocao | E escudo",20,195,15,LIGHTGRAY);
+
         EndDrawing();
     }
-/* Eu percebi q tinha linhas desnecessárias e acabei comprimindo elas em uma só, além disso deixei as váriaveis com nomes completos pra melhor entendimento, eu dei uma mudadinha na resolução pra ficar em tela cheia no meu pc pq tava me dando agonia, e usei um sistema de verificação q eu achei na pesquisa de como usar malloc direito, pq eu n tinha entendido e só tinha testado até funcionar.*/
-    free(bolas);
-    free(moedas);
+/*coloquei um J pra mostrar qual bolinha é o jogador*/
+    free(bolas);free(moedas);free(itens);
     liberarGrade(grade,l);
     CloseWindow();
     return 0;
