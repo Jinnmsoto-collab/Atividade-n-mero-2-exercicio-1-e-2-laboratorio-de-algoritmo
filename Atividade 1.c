@@ -6,7 +6,7 @@
 #define H 1080
 #define CELL 40
 
-typedef enum { BRONZE, PRATA, OURO } Tipo;
+typedef enum { BRONZE, PRATA, OURO, DIAMANTE } Tipo;
 
 typedef struct {
     Vector2 pos, vel;
@@ -23,8 +23,12 @@ typedef struct {
     float tempoColeta;
 } Moeda;
 
-int valor(Tipo t){return t==BRONZE?5:t==PRATA?10:25;}
-Color cor(Tipo t){return t==BRONZE?(Color){160,90,40,255}:t==PRATA?(Color){190,190,190,255}:GOLD;}
+int valor(Tipo t){return t==BRONZE?5:t==PRATA?10:t==OURO?25:50;}
+Color cor(Tipo t){
+    return t==BRONZE?(Color){160,90,40,255}:
+           t==PRATA?(Color){190,190,190,255}:
+           t==OURO?GOLD:(Color){0,220,255,255};
+}
 
 void novaBola(Bola *b){
     b->raio=12;
@@ -38,12 +42,15 @@ void novaBola(Bola *b){
 void novaMoeda(Moeda *m){
     m->raio=10;
     m->pos=(Vector2){GetRandomValue(10,W-10),GetRandomValue(10,H-10)};
-    m->tipo=GetRandomValue(BRONZE,OURO);
+    if(GetRandomValue(0,9)==0)
+        m->tipo=DIAMANTE;
+    else
+        m->tipo=GetRandomValue(BRONZE,OURO);
     m->valor=valor(m->tipo);
     m->coletada=false;
     m->tempoColeta=0;
 }
-
+/*durante essa parte aqui da moeda, demorei pra entender porque ele mostrava prata mesmo sem a adição enquanto eu fazia uns testes, até perceber q prata é = 1 e por isso sorteava mesmo assim, enquanto eu queria testar os outros valores kkkkkk*/
 Bola *criarBolas(int n){
     Bola *v=n>0?malloc(n*sizeof(Bola)):NULL;
     if(!v)return NULL;
@@ -193,7 +200,7 @@ int main(void){
         DrawText("M +moeda | N -moeda",20,140,15,LIGHTGRAY);
         EndDrawing();
     }
-\* Eu percebi q tinha linhas desnecessárias e acabei comprimindo elas em uma só, além disso deixei as váriaveis com nomes completos pra melhor entendimento, eu dei uma mudadinha na resolução pra ficar em tela cheia no meu pc pq tava me dando agonia, e usei um sistema de verificação q eu achei na pesquisa de como usar malloc direito, pq eu n tinha entendido e só tinha testado até funcionar.*/
+/* Eu percebi q tinha linhas desnecessárias e acabei comprimindo elas em uma só, além disso deixei as váriaveis com nomes completos pra melhor entendimento, eu dei uma mudadinha na resolução pra ficar em tela cheia no meu pc pq tava me dando agonia, e usei um sistema de verificação q eu achei na pesquisa de como usar malloc direito, pq eu n tinha entendido e só tinha testado até funcionar.*/
     free(bolas);
     free(moedas);
     liberarGrade(grade,l);
